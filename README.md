@@ -74,4 +74,8 @@ Linux command to format SD card:
 - document stop/resume and how we handle ungraceful shutdown
 - include a status      (uploading ... date ... etc)
 - or, send an e-mail (or other notification) when it starts and ends.
-
+  Possible notification options:
+  - [Telegram](https://telegram.org/faq) which has a
+    [CLI interface](https://github.com/vysheng/tg)
+  - XMPP client and server
+  - IRC
