@@ -1,0 +1,156 @@
+#!/usr/bin/perl -w
+#
+# Auto uploading script
+#
+use File::Basename;
+
+my $ini = shift;
+$ini || die "No config specified\n";
+my $pid = shift;
+$pid || die "No pid file specified\n";
+
+my $TIMEOUT = 30;
+
+if (open(my $x,'>',$pid)) {
+    print $x $$,"\n";
+    close($x);
+}
+
+my %cfg; # Config options
+my %DONE; # Done database
+my $state = '.state';
+
+# Determine our device id...
+sub get_hwaddr {
+    my $hwaddr='unknown';
+    open(my $fh,'-|','ifconfig') || die "ifconfig: $!\n";
+    while (<$fh>) {
+	if ( /\s+HWaddr\s+(\S+)/) {
+	    $hwaddr = $1;
+	}
+    }
+    close($fh);
+    $hwaddr =~ tr/:A-Z/.a-z/;
+    return $hwaddr;
+}
+
+sub myopen($$) {
+    my ($op,$name) = @_;
+    my $start = time();
+
+    do {
+	return $fh if (open($fh,$op,$name));
+	sleep(1);
+    } until (time() - $start > $TIMEOUT);
+    return undef;
+}
+
+
+# Read config vars
+sub read_ini
+{
+    my ($fn,$cfg,$keep) = @_;
+
+    my $fh = myopen('<',$fn) or die "$fn: $!\n";
+    while (<$fh>) {
+	next if /^\s*#/;
+	s/^\s+//;
+	s/\s+$//;
+	s/\s*#.*$//;
+	my ($k,$v) = split(/=/,$_,2);
+	next unless $v;
+	$cfg->{$k} = $v;
+    }
+    # We keep it open so that refresh_sd doesn't unmount /mnt/sd
+    close($fh) unless ($keep);
+}
+
+sub ftp_cmd {
+    my ($op,$src,$dst) = @_;
+    system('ftp'.$op,
+	   '-v',
+	   '-u',$cfg{ftp_usr},
+	   '-p',$cfg{ftp_pwd},
+	   $cfg{ftp_srv},
+	   $dst,$src) == 0 or return $?;
+    return '';
+}
+
+sub load_state {
+    my ($sid) = @_;
+
+    my $canary;
+    my $vv = 0;
+
+    do {
+	%DONE = ();
+	ftp_cmd('get',$cfg{ftp_path}."/$sid/$state.$vv","/tmp/$state") eq ''
+	    or die "ftpget: $!\n";
+
+	open(my $fh,'<',"/tmp/$state") || die "/tmp/$state: $!\n";
+	$canary = 1;
+	while (<$fh>) {
+	    chomp;
+	    if ($_ eq '////') {
+		$canary = 1;
+		next;
+	    }
+	    next if ($_ eq '');
+	    $DONE{$_} = 1;
+	    $canary = 0;
+	}
+	close($fh);
+	++$v;
+    } until ($v > 1 || $canary);
+    unless ($canary) {
+	die "inconsistent state database\n";
+    }
+}
+sub save_state {
+    my ($sid) = @_;
+    open(my $fh,'>',"/tmp/$state") || die "/tmp/$state: $!\n";
+    foreach my $f (keys %DONE) {
+	next if (! -f $f);
+	print $fh $f,"\n";
+    }
+    print $fh "////\n";
+    close($fh);
+    # We write it twice so that we always have a good copy in case
+    # of a powerloss...
+    ftp_cmd('put',"/tmp/$state",$cfg{ftp_path}."/$sid/$state.0") eq ''
+	or die "ftpput: $!\n";
+    ftp_cmd('put',"/tmp/$state",$cfg{ftp_path}."/$sid/$state.1") eq ''
+	or die "ftpput: $!\n";
+}
+
+sub refresh_sd {
+    system('sh','/usr/bin/refresh_sd');
+}
+
+refresh_sd;	# Sync things around...
+
+read_ini($ini,\%cfg,1); # We keep the cfg file open (the ,1)
+my $sid = get_hwaddr();
+print $sid,"\n";
+
+load_state($sid);
+
+open(my $fh,'-|','find',$cfg{ftp_src},qw(-type f)) || die "find: $!\n";
+while (<$fh>) {
+    chomp;
+    next if ($DONE{$_});
+    next unless (-f $_);
+    my $mtime = (stat($_))[9];
+    my ($sec,$min,$hour,$mday,$mon,$year) = localtime($mtime);
+    my $rem = sprintf("%04d-%02d-%02d %02d.%02d.%02d_%s",
+		      $year+1900,$mon+1,$mday,$hour,$min,$sec,
+		      basename($_));
+    # Upload file...
+    next unless (ftp_cmd('put',$_,$cfg{ftp_path}."/$sid/$rem") eq '');
+
+    $DONE{$_} = 1;
+    save_state($sid);
+}
+close($fh);
+
+unlink($pid);

@@ -1,0 +1,15 @@
+#!/bin/sh
+target="$1"
+( cd "$1" ) || exit
+mkdir -p $target/.custom
+cp -v \
+    autorun.sh \
+    $target
+cp -v \
+    busybox-armv5l \
+    ntpd.sh \
+    access.sh \
+    config.sh \
+    autoupload \
+    alias.sh \
+    $target/.custom

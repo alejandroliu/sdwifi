@@ -1,0 +1,22 @@
+#
+# Local configuration settings
+#
+
+# Where the alternative busybox command should be copied to
+bbext=/sbin/busybox-ext
+# Where the autoupload script should be copied to.
+autoup=/bin/autoupload
+
+# Settings for the trusted network.
+# When we are in this network ftp and telnet servers are active
+cfg_ssid=TRUSTED_SSID
+cfg_router=TRUSTED_ROUTER_IP
+cfg_router_mac="TRUSTED_ROUTER_MAC_ADDRESS"
+
+# FTP server configuration
+# We only try to upload if we are in the trusted network.
+ftp_srv=ftp_server
+ftp_usr=ftp
+ftp_pwd=anon_user_password
+ftp_path=anon_ftp_writeable_path_usually_incoming
+ftp_src=/mnt/sd/DCIM
