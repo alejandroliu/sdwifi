@@ -73,4 +73,5 @@ Linux command to format SD card:
 
 - document stop/resume and how we handle ungraceful shutdown
 - include a status      (uploading ... date ... etc)
-- 
+- or, send an e-mail (or other notification) when it starts and ends.
+
